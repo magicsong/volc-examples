@@ -15,5 +15,9 @@ func main() {
     }
     result := svc.DoSomething()
     fmt.Println(result)
+    // loop to keep the program running
+    for {
+        // do nothing, just keep the program running
+    }
 }
 

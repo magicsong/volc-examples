@@ -7,10 +7,12 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # 复制源代码
-COPY . .
+COPY cmd cmd
+COPY internal internal
+COPY pkg pkg
 
 # 编译应用
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/main.go
 
 # 运行阶段
 FROM alpine:latest

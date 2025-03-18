@@ -7,6 +7,7 @@ import (
 
 	"github.com/magicsong/volc-examples/irsa/pkg/display"
 	"github.com/volcengine/ve-tos-golang-sdk/v2/tos"
+	"github.com/volcengine/volcengine-go-sdk/service/kms"
 	"github.com/volcengine/volcengine-go-sdk/service/vpc"
 	"github.com/volcengine/volcengine-go-sdk/volcengine"
 	"github.com/volcengine/volcengine-go-sdk/volcengine/credentials"
@@ -15,6 +16,7 @@ import (
 
 type Service struct {
 	VpcClient *vpc.VPC
+	KmsClient kms.KMSAPI
 	region    string
 	config    *volcengine.Config
 	TosClient *tos.ClientV2
@@ -33,125 +35,63 @@ func NewService() (*Service, error) {
 	return s, nil
 }
 
-
-
-// getCredentials retrieves credentials from OpenID Connect provider
-// when running in a Kubernetes pod with IAM role
-func getCredentials() *credentials.Credentials {
-    // Check if running in a pod with IRSA configuration
-    tokenFile := os.Getenv("VOLCENGINE_OIDC_TOKEN_FILE")
-    roleArn := os.Getenv("VOLCENGINE_ROLE_TRN")
-
-    if tokenFile != "" && roleArn != "" {
-        // Running with IRSA, use web identity token
-        service := &Service{}
-        creds, err := service.assumeRoleWithOIDC()
-        if err != nil {
-            fmt.Printf("Warning: Failed to assume role with OIDC: %v\n", err)
-        } else {
-            return creds
-        }
-    }
-
-    // Fallback to static credentials for local development
-    ak := os.Getenv("VOLCENGINE_ACCESS_KEY")
-    sk := os.Getenv("VOLCENGINE_SECRET_KEY")
-    
-    if ak != "" && sk != "" {
-        return credentials.NewStaticCredentials(ak, sk, "")
-    }
-    
-    // Return empty credentials if no method available
-    // This will cause authentication to fail appropriately
-    return credentials.NewStaticCredentials("", "", "")
-}
-
 // 修正 init 方法，使用 getCredentials 获取凭证
 func (s *Service) init() error {
-    // 获取凭证
-    creds := getCredentials()
+	// 获取凭证
+	creds := getCredentials()
 
-    // 创建配置并存储在服务结构体中
-    s.config = volcengine.NewConfig().
-        WithCredentials(creds).
-        WithRegion(s.region)
-
-    sess, err := session.NewSession(s.config)
-    if err != nil {
-        return fmt.Errorf("failed to create session: %v", err)
-    }
-
-    s.VpcClient = vpc.New(sess)
-    
-    // 获取 AK、SK 用于 TOS 客户端
-    akValue, skValue, token := creds.Get()
-    
-    tosOpts := []tos.ClientOption{
-        tos.WithRegion("cn-beijing"),
-    }
-    
-    if token != "" {
-        tosOpts = append(tosOpts, tos.WithCredentials(tos.NewSessionCredentials(akValue, skValue, token)))
-    } else {
-        tosOpts = append(tosOpts, tos.WithCredentials(tos.NewStaticCredentials(akValue, skValue)))
-    }
-    
-    s.TosClient, err = tos.NewClientV2("tos-cn-beijing.volces.com", tosOpts...)
-    if err != nil {
-        return fmt.Errorf("failed to create tos client: %v", err)
-    }
-    
-    return nil
-}
-
-// getCredentials retrieves credentials from OpenID Connect provider
-// when running in a Kubernetes pod with IAM role
-func getCredentials() *credentials.Credentials {
-	// Check if running in a pod with IRSA configuration
-	tokenFile := os.Getenv("VOLCENGINE_OIDC_TOKEN_FILE")
-	roleArn := os.Getenv("VOLCENGINE_ROLE_TRN")
-
-	if tokenFile != "" && roleArn != "" {
-		// Running with IRSA, use web identity token
-		return 
-	}
-
-	// Fallback to static credentials for local development
-	ak := os.Getenv("VOLCENGINE_ACCESS_KEY")
-	sk := os.Getenv("VOLCENGINE_SECRET_KEY")
-	
-	if ak != "" && sk != "" {
-		return credentials.NewStaticCredentials(ak, sk, "")
-	}
-	
-	// Return empty credentials if no method available
-	// This will cause authentication to fail appropriately
-	return credentials.NewStaticCredentials("", "", "")
-}
-
-// init initializes the service clients
-func (s *Service) init() error {
-	// Get credentials from environment variables
-	// Create the config and store it in the service struct
+	// 创建配置并存储在服务结构体中
 	s.config = volcengine.NewConfig().
-		WithCredentials(credentials.NewStaticCredentials(ak, sk, "")).
+		WithCredentialsChainVerboseErrors(true).
+		WithCredentials(creds).
 		WithRegion(s.region)
-
 	sess, err := session.NewSession(s.config)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %v", err)
 	}
 
 	s.VpcClient = vpc.New(sess)
-	s.TosClient, err = tos.NewClientV2("tos-cn-beijing.volces.com", tos.WithCredentials(tos.NewStaticCredentials(ak, sk)),tos.WithRegion("cn-beijing"))
+	s.KmsClient = kms.New(sess)
+	// 获取 AK、SK 用于 TOS 客户端
+	v, err := creds.Get()
+	if err != nil {
+		return fmt.Errorf("failed to get credentials: %v", err)
+	}
+	akValue := v.AccessKeyID
+	skValue := v.SecretAccessKey
+
+	tosOpts := []tos.ClientOption{
+		tos.WithRegion("cn-beijing"),
+	}
+
+	tosOpts = append(tosOpts, tos.WithCredentials(tos.NewStaticCredentials(akValue, skValue)))
+
+	s.TosClient, err = tos.NewClientV2("tos-cn-beijing.volces.com", tosOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to create tos client: %v", err)
 	}
+
 	return nil
 }
 
+// getCredentials retrieves credentials from OpenID Connect provider
+// when running in a Kubernetes pod with IAM role
+func getCredentials() *credentials.Credentials {
+	return credentials.NewCredentials(credentials.NewOIDCCredentialsProviderFromEnv())
+	// return credentials.NewChainCredentials([]credentials.Provider{
+	// 	credentials.NewOIDCCredentialsProviderFromEnv(),
+	// 	credentials.NewEnvCredentials().GetProvider()})
+}
+
 func (s *Service) DoSomething() error {
-	return s.ListBuckets()
+	v, err := s.KmsClient.GetSecretValue(&kms.GetSecretValueInput{
+		SecretName: volcengine.String("hello"),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get secret value: %w", err)
+	}
+	display.PrintAsJSON(v)
+	return nil
 }
 
 // Helper function to get environment variable with default value
