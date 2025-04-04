@@ -1,12 +1,11 @@
 package service
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/magicsong/volc-examples/irsa/pkg/display"
-	"github.com/volcengine/ve-tos-golang-sdk/v2/tos"
 	"github.com/volcengine/volcengine-go-sdk/service/kms"
 	"github.com/volcengine/volcengine-go-sdk/service/vpc"
 	"github.com/volcengine/volcengine-go-sdk/volcengine"
@@ -19,7 +18,6 @@ type Service struct {
 	KmsClient kms.KMSAPI
 	region    string
 	config    *volcengine.Config
-	TosClient *tos.ClientV2
 }
 
 // NewService creates a new Service instance.
@@ -35,7 +33,6 @@ func NewService() (*Service, error) {
 	return s, nil
 }
 
-// 修正 init 方法，使用 getCredentials 获取凭证
 func (s *Service) init() error {
 	// 获取凭证
 	creds := getCredentials()
@@ -52,24 +49,6 @@ func (s *Service) init() error {
 
 	s.VpcClient = vpc.New(sess)
 	s.KmsClient = kms.New(sess)
-	// 获取 AK、SK 用于 TOS 客户端
-	v, err := creds.Get()
-	if err != nil {
-		return fmt.Errorf("failed to get credentials: %v", err)
-	}
-	akValue := v.AccessKeyID
-	skValue := v.SecretAccessKey
-
-	tosOpts := []tos.ClientOption{
-		tos.WithRegion("cn-beijing"),
-	}
-
-	tosOpts = append(tosOpts, tos.WithCredentials(tos.NewStaticCredentials(akValue, skValue)))
-
-	s.TosClient, err = tos.NewClientV2("tos-cn-beijing.volces.com", tosOpts...)
-	if err != nil {
-		return fmt.Errorf("failed to create tos client: %v", err)
-	}
 
 	return nil
 }
@@ -84,13 +63,48 @@ func getCredentials() *credentials.Credentials {
 }
 
 func (s *Service) DoSomething() error {
+	secretName := getEnvWithDefault("KMS_SECRET_NAME", "default-secret")
+	akKey := getEnvWithDefault("KMS_AK_KEY", "accessKey")
+	skKey := getEnvWithDefault("KMS_SK_KEY", "secretKey")
+	typeVar := getEnvWithDefault("CLOUD_TYPE", "default")
+
 	v, err := s.KmsClient.GetSecretValue(&kms.GetSecretValueInput{
-		SecretName: volcengine.String("hello"),
+		SecretName: volcengine.String(secretName),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get secret value: %w", err)
 	}
-	display.PrintAsJSON(v)
+
+	// Parse the secret value as JSON
+	var secretData map[string]string
+	if err := json.Unmarshal([]byte(*v.SecretValue), &secretData); err != nil {
+		return fmt.Errorf("failed to parse secret value as JSON: %w", err)
+	}
+
+	// Retrieve AK and SK from the parsed JSON
+	ak, akExists := secretData[akKey]
+	sk, skExists := secretData[skKey]
+	if !akExists || !skExists {
+		return fmt.Errorf("missing required keys in secret: %s, %s", akKey, skKey)
+	}
+
+	if typeVar == "aws" {
+		// Create AWS credentials file
+		awsCreds := fmt.Sprintf("[default]\naws_access_key_id = %s\naws_secret_access_key = %s\n", ak, sk)
+		awsCredsPath := os.ExpandEnv("$HOME/.aws/credentials")
+		// Create the directory if it doesn't exist
+		if err := os.MkdirAll(awsCreds, 0700); err != nil {
+			return fmt.Errorf("failed to create AWS credentials directory: %w", err)
+		}
+		if err := os.WriteFile(awsCredsPath, []byte(awsCreds), 0600); err != nil {
+			return fmt.Errorf("failed to write AWS credentials file: %w", err)
+		}
+	}
+
+	display.PrintAsJSON(map[string]string{
+		"AccessKey": ak,
+		"SecretKey": sk,
+	})
 	return nil
 }
 
@@ -101,14 +115,4 @@ func getEnvWithDefault(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
-}
-
-// ListBuckets
-func (s *Service) ListBuckets() error {
-	resp, err := s.TosClient.ListBuckets(context.TODO(), &tos.ListBucketsInput{})
-	if err != nil {
-		return err
-	}
-	display.PrintAsJSON(resp)
-	return nil
 }
