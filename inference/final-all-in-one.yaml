@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepseek-r1-server
+  namespace: dpsk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deepseek-r1-server
+  template:
+    metadata:
+      labels:
+        app: deepseek-r1-server
+    spec:
+      containers:
+        - name: server
+          image: hll-cr-bp-ap-southeast-1.cr.bytepluses.com/demo-workspace/sglang45:latest
+          imagePullPolicy: IfNotPresent
+          workingDir: /sgl-workspace
+          command:
+          - bash
+          - -c
+          - 'cd /sgl-workspace && python3 -m sglang.launch_server --model-path /models/deepseek --tp 4 --trust-remote-code --context-length 2048 --mem-fraction-static 0.7 --host 0.0.0.0 --port 8080'
+          ports:
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          resources:
+            limits:
+              nvidia.com/gpu: 4
+            requests:
+              nvidia.com/gpu: 4
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /models/deepseek
+            name: models
+          - mountPath: /dev/shm
+            name: shared-mem
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: pvc-deepseek
+      - emptyDir:
+          medium: Memory
+        name: shared-mem
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-deepseek
+spec:
+  accessModes:
+  - ReadWriteMany
+  capacity:
+    storage: 20Gi
+  csi:
+    driver: tos.csi.volcengine.com
+    nodePublishSecretRef:
+      name: vke-tos-key
+      namespace: dpsk
+    nodeStageSecretRef:
+      name: vke-tos-key
+      namespace: dpsk
+    volumeAttributes:
+      bucket: demo-bucket-hll
+      path: /models/
+      url: http://tos-s3-ap-southeast-1.ibytepluses.com
+    volumeHandle: pv-deepseek
+  persistentVolumeReclaimPolicy: Retain
+  volumeMode: Filesystem
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-deepseek
+  namespace: dpsk
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: ""
+  volumeMode: Filesystem
+  volumeName: pv-deepseek
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepseek-svc 
+  namespace: dpsk
+  labels:
+    app: deepseek
+spec:
+  selector:
+      app: deepseek-r1-server
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: http
+      name: http
+  type: LoadBalancer
