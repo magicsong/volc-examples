@@ -110,3 +110,14 @@ spec:
       targetPort: http
       name: http
   type: LoadBalancer
+
+---
+apiVersion: v1
+data:
+  akId: ${AK}
+  akSecret: ${SK}
+kind: Secret
+metadata:
+  name: vke-tos-key
+  namespace: ${NAMESPACE}
+type: Opaque

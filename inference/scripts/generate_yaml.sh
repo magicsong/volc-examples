@@ -1,7 +1,11 @@
 #!/bin/bash
 
+# 设置默认值
+ENV_FILE="${ENV_FILE:-./.env}"
+TEMPLATE_FILE="${TEMPLATE_FILE:-./all-in-one.yaml}"
+OUTPUT_FILE="${OUTPUT_FILE:-./final-all-in-one.yaml}"
+
 # 加载 .env 文件
-ENV_FILE="/Users/bytedance/OpenSource/volc-examples/inference/.env"
 if [ -f "$ENV_FILE" ]; then
   export $(grep -v '^#' $ENV_FILE | xargs)
 else
@@ -9,9 +13,6 @@ else
   exit 1
 fi
 
-# 文件路径
-TEMPLATE_FILE="/Users/bytedance/OpenSource/volc-examples/inference/all-in-one.yaml"
-OUTPUT_FILE="/Users/bytedance/OpenSource/volc-examples/inference/final-all-in-one.yaml"
 set -e
 # 替换模板中的变量
 sed -e "s|\${NAMESPACE}|$NAMESPACE|g" \

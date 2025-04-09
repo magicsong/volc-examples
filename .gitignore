@@ -39,3 +39,4 @@ build/
 .DS_Store
 Thumbs.db
 vendor
+final-all-in-one.yaml
