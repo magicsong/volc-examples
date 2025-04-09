@@ -1,6 +1,6 @@
 # VKE Sglang Kubernetes 部署示例
 
-本项目提供了一个脚本和模板，用于根据 `.env` 文件中的配置生成最终的 Kubernetes YAML 文件。
+本项目提供了一个脚本和模板，用于根据 `.env` 文件中的配置生成最终的 Kubernetes YAML 文件，该文件能够在VKE上一键拉起一个SGLANG的大模型服务
 
 ## 文件结构
 
@@ -11,16 +11,17 @@
   脚本文件，读取 `.env` 文件中的配置并替换模板中的变量，生成最终的 YAML 文件。
 
 - `.env`  
-  配置文件，存储需要替换的变量值。
+  配置文件（唯一需要用户提供的文件， `touch .env`）。
 
 ## `.env` 文件变量说明
 
 以下是 `.env` 文件中所有变量的说明：
+> 已经是最小化配置，所有参数都需要填写
 
 | 变量名            | 描述                                                                                     | 示例值                                                                                     |
 |-------------------|------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
 | `NAMESPACE`       | Kubernetes 命名空间，用于指定资源所在的命名空间。 请确保namespace存在                                        | `dpsk`                                                                                   |
-| `IMAGE`           | Sglang容器镜像地址，用于指定部署的容器镜像。                                                   | `lmsysorg/sglang:latest`              |
+| `IMAGE`           | Sglang容器镜像地址，用于指定部署的容器镜像。 由于镜像太大，VKE无法提供官方镜像，需要用户自己拉取                                                  | `lmsysorg/sglang:latest`              |
 | `GPU`             | GPU 数量，用于指定容器所需的 GPU 资源。                                                  | `1`                                                                                      |
 | `BUCKET`          | 对象存储桶名称，用于指定存储模型文件的存储桶。                                           | `demo-bucket-hll`                                                                        |
 | `MODEL_PATH_TOS`  | 模型路径，用于指定存储桶中的模型文件路径。                                               | `/models/`                                                                               |
@@ -56,7 +57,7 @@
 4. **应用 YAML 文件**  
    使用 `kubectl` 命令将生成的 YAML 文件应用到 Kubernetes 集群：
    ```bash
-   kubectl apply -f inference/final-all-in-one.yaml
+   kubectl apply -f final-all-in-one.yaml
    ```
 
 ## 注意事项
