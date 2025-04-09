@@ -75,3 +75,27 @@
 - `AK` 和 `SK` 会自动进行 Base64 编码，请确保在 `.env` 文件中提供未编码的值。
 
 运行脚本后，生成的 `final-all-in-one.yaml` 文件将替换所有占位符为实际值。
+
+
+## 测试服务
+
+部署完成后，可以使用以下命令测试服务是否正常运行：
+
+```bash
+# 获取 deepseek-svc 的 EXTERNAL-IP
+EXTERNAL_IP=$(kubectl get svc deepseek-svc -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+curl -X POST http://$EXTERNAL_IP:8080/v1/chat/completions \
+-H "Content-Type: application/json" \
+-d '{
+    "model": "/model",
+    "messages": [
+        {
+            "role": "user",
+            "content": "你好，你是谁？"
+        }
+    ],
+    "stream": false,
+    "temperature": 0.7
+}'
+```
